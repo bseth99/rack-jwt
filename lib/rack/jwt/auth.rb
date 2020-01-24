@@ -44,12 +44,15 @@ module Rack
         @app     = app
         @secret  = opts.fetch(:secret, nil)
         @verify  = opts.fetch(:verify, true)
+        @lookup_verifier = opts.fetch(:lookup_verifier, nil)
         @options = opts.fetch(:options, {})
         @exclude = opts.fetch(:exclude, [])
 
         @secret  = @secret.strip if @secret.is_a?(String)
         @options[:algorithm] = DEFAULT_ALGORITHM if @options[:algorithm].nil?
-
+        
+        return if @lookup_verifier
+        
         check_secret_type!
         check_secret!
         check_secret_and_verify_for_none_alg!
@@ -75,11 +78,21 @@ module Rack
 
       def verify_token(env)
         # extract the token from the Authorization: Bearer header
-        # with a regex capture group.
+        # with a regex capture group.      
         token = BEARER_TOKEN_REGEX.match(env['HTTP_AUTHORIZATION'])[1]
 
         begin
-          decoded_token = Token.decode(token, @secret, @verify, @options)
+          dirty_token = Token.decode( token, nil, false )          
+          dirty_payload = dirty_token.first
+          dirty_header = dirty_token.last
+          
+          if @lookup_verifier
+             secret, verify, options = @lookup_verifier.call( dirty_payload, dirty_header )
+          else  
+             secret, verify, options = [@secret, @verify, @options]
+          end
+          
+          decoded_token = Token.decode(token, secret, verify, options)
           env['jwt.payload'] = decoded_token.first
           env['jwt.header'] = decoded_token.last
           @app.call(env)
@@ -103,6 +116,8 @@ module Rack
           return_error('Invalid JWT token : Invalid JWT ID (jti)')
         rescue ::JWT::DecodeError
           return_error('Invalid JWT token : Decode Error')
+        rescue => e
+          return_error( e.message )          
         end
       end
 
