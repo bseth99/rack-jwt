@@ -95,6 +95,7 @@ module Rack
           decoded_token = Token.decode(token, secret, verify, options)
           env['jwt.payload'] = decoded_token.first
           env['jwt.header'] = decoded_token.last
+
           @app.call(env)
         rescue ::JWT::VerificationError
           return_error('Invalid JWT token : Signature Verification Error')
@@ -117,7 +118,7 @@ module Rack
         rescue ::JWT::DecodeError
           return_error('Invalid JWT token : Decode Error')
         rescue => e
-          return_error( e.message )          
+          return_error(e.message)
         end
       end
 
